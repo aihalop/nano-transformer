@@ -24,8 +24,6 @@ class Embedding(torch.nn.Module):
         positions = torch.zeros(x.shape, dtype=torch.int).to(device)
         positions[:, :] = torch.range(0, x.shape[1] - 1)
         return self.position_encoding(positions) + self.input_embedding(x)
-        # x = self.position_encoding(positions) + self.input_embedding(x)
-        # return self.input_embedding(x)
 
 
 class Attention(torch.nn.Module):
@@ -52,29 +50,52 @@ class FeedForward(torch.nn.Module):
         return self.f(x)
 
 
+class SelfAttention(torch.nn.Module):
+    def __init__(self, embedding_dim):
+        super().__init__()
+        self.projector_q = torch.nn.Linear(embedding_dim, embedding_dim)
+        self.projector_k = torch.nn.Linear(embedding_dim, embedding_dim)
+        self.projector_v = torch.nn.Linear(embedding_dim, embedding_dim)
+        self.attention = Attention()
+
+    def forward(self, x):
+        return self.attention(
+            self.projector_q(x),
+            self.projector_k(x),
+            self.projector_v(x),
+        )
+
+
+class EncoderDecoderAttention(torch.nn.Module):
+    def __init__(self, embedding_dim):
+        super().__init__()
+        self.projector_q = torch.nn.Linear(embedding_dim, embedding_dim)
+        self.projector_k = torch.nn.Linear(embedding_dim, embedding_dim)
+        self.projector_v = torch.nn.Linear(embedding_dim, embedding_dim)
+        self.attenion = Attention()
+
+    def forward(self, y, x):
+        return self.attenion(
+            self.projector_q(y),
+            self.projector_k(x),
+            self.projector_v(x)
+        )
+
+
 class EncoderBlock(torch.nn.Module):
     def __init__(self, num_embeddings, embedding_dim, padding_idx,
                  max_token_length, num_heads):
         super().__init__()
         self._embedding_dim = embedding_dim
+        self.self_attention = SelfAttention(embedding_dim)
         # self.transform_QKV = torch.nn.Linear(embedding_dim, 3 * embedding_dim, bias=False)
-        self.projectors = {
-            'q': torch.nn.Linear(embedding_dim, embedding_dim).to(device),
-            'k': torch.nn.Linear(embedding_dim, embedding_dim).to(device),
-            'v': torch.nn.Linear(embedding_dim, embedding_dim).to(device),
-        }
-        self.attention = Attention()
         self.feed_forward = FeedForward(embedding_dim)
 
     def forward(self, x):
         # Q, K, V = self.transform_QKV(x).split(self._embedding_dim, dim=-1)
-        Q = self.projectors['q'](x)
-        K = self.projectors['k'](x)
-        V = self.projectors['v'](x)
-        # TODO(Jin Cao): normalize, residual
-        attention = self.attention(Q, K, V)
-        output = self.feed_forward(attention)
-
+        # attention = self.attention(Q, K, V)
+        attention = F.layer_norm(x + self.self_attention(x), x.shape)
+        output = F.layer_norm(attention + self.feed_forward(attention), attention.shape)
         return output
 
 
@@ -95,42 +116,20 @@ class Encoder(torch.nn.Module):
 class DecoderBlock(torch.nn.Module):
     def __init__(self, num_embeddings, embedding_dim):
         super().__init__()
-        self.self_projectors = {
-            'q': torch.nn.Linear(embedding_dim, embedding_dim).to(device),
-            'k': torch.nn.Linear(embedding_dim, embedding_dim).to(device),
-            'v': torch.nn.Linear(embedding_dim, embedding_dim).to(device),
-        }
-        self.encoder_decoder_projectors = {
-            'q': torch.nn.Linear(embedding_dim, embedding_dim).to(device),
-            'k': torch.nn.Linear(embedding_dim, embedding_dim).to(device),
-            'v': torch.nn.Linear(embedding_dim, embedding_dim).to(device),
-        }
-        self.masked_self_attenion = Attention()
-        self.encoder_decoder_attenion = Attention()
+        self.self_attention = SelfAttention(embedding_dim)
+        self.encoder_decoder_attention = EncoderDecoderAttention(embedding_dim)
         self.feed_forward = FeedForward(embedding_dim)
 
-
     def forward(self, y, x):
-        # print(">>>> y", y, y.shape)
-        self_attention = self.masked_self_attenion(
-            self.self_projectors['q'](y),
-            self.self_projectors['k'](y),
-            self.self_projectors['v'](y)
+        self_attention = F.layer_norm(y + self.self_attention(y), y.shape)
+        encode_decode_attention = F.layer_norm(
+            self_attention + self.encoder_decoder_attention(self_attention, x),
+            self_attention.shape
         )
-        # print("self_attention: ", self_attention, self_attention.shape)
-
-        # print("x", x.shape)
-        # self_attention
-        encode_decode_attention = self.encoder_decoder_attenion(
-            self.self_projectors['q'](self_attention),
-            self.self_projectors['k'](x),
-            self.self_projectors['v'](x)
+        output = F.layer_norm(
+            encode_decode_attention + self.feed_forward(encode_decode_attention),
+            encode_decode_attention.shape
         )
-
-        # print("encode_decode_attention: ", encode_decode_attention.shape)
-
-        output = self.feed_forward(encode_decode_attention)
-        # print("output", output.shape)
 
         return output
 
@@ -170,16 +169,12 @@ class Transformer(torch.nn.Module):
         x = self.embedding(x)
         y = self.embedding(y)
         encode = self.encoder(x)
-        # print("encode", encode.shape)
-        # print("y: ", y, y.shape)
         output = self.decoder(y, encode)
-        # print("output >>>> ", output, output.shape)
-        # return F.softmax(self.linear(output))
         return self.linear(output)
 
 
 
-batch_size = 2
+batch_size = 10
 dataset = Multi30k(batch_size)
 num_embeddings = dataset.de_vocab_size()
 embedding_dim = 512
@@ -213,7 +208,7 @@ for count, item in enumerate(dataset.train_data()):
     optimizer.step()
     optimizer.zero_grad()
 
-    if count == 100: break
+    if count == 1000: break
 
 
 
