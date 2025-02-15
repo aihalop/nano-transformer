@@ -174,7 +174,8 @@ class Transformer(torch.nn.Module):
 
 
 
-batch_size = 10
+num_epochs = 2
+batch_size = 60
 dataset = Multi30k(batch_size)
 num_embeddings = dataset.de_vocab_size()
 embedding_dim = 512
@@ -189,33 +190,31 @@ model.to(device)
 optimizer = torch.optim.Adam(model.parameters())
 loss_function = torch.nn.CrossEntropyLoss()
 
-for count, item in enumerate(dataset.train_data()):
-    # print("item: ", item, len(item), type(item))
-    src = item['de_ids'].to(device)
-    trg = item['en_ids'].to(device)
+def train(model, optimizer, loss_function, dataset):
+    loss = None
+    for count, item in enumerate(dataset.train_data()):
+        # print("item: ", item, len(item), type(item))
+        src = item['de_ids'].to(device)
+        trg = item['en_ids'].to(device)
 
-    # TODO(Jin Cao): Try not shifted right. If we put the whole length
-    # tokens as input data, and it will not only train the last token,
-    # but the tokens at every positions as well, then why should we
-    # shifted right the output?
-    shifted_right_trg = trg[:, :-1]
-    predict = model(src, shifted_right_trg)
-    predict = predict.transpose(-2, -1)
-    # print("output >> ", predict, predict.shape)
-    loss = loss_function(predict, trg[:,1:].long())
-    print("loss: ", loss)
-    loss.backward()
-    optimizer.step()
-    optimizer.zero_grad()
+        # TODO(Jin Cao): Try not shifted right. If we put the whole length
+        # tokens as input data, and it will not only train the last token,
+        # but the tokens at every positions as well, then why should we
+        # shifted right the output?
+        shifted_right_trg = trg[:, :-1]
+        predict = model(src, shifted_right_trg)
+        predict = predict.transpose(-2, -1)
+        # print("output >> ", predict, predict.shape)
+        loss = loss_function(predict, trg[:,1:].long())
+        print("loss: ", loss)
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
 
-    if count == 1000: break
+    return loss
 
+# train
+for i in range(num_epochs):
+    loss = train(model, optimizer, loss_function, dataset)
+    print(f"epoch {i}, loss: {loss}")
 
-
-# # train
-# while True:
-#     if count == 5: break
-#     count += 1
-
-
-print([x for x in range(5)])
