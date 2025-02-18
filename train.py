@@ -21,8 +21,7 @@ class Embedding(torch.nn.Module):
             torch.nn.Embedding(max_token_length, embedding_dim)
 
     def forward(self, x):
-        positions = torch.zeros(x.shape, dtype=torch.int).to(device)
-        positions[:, :] = torch.range(0, x.shape[1] - 1)
+        positions = torch.arange(0, x.shape[1]).repeat(x.shape[0], 1).to(device)
         return self.position_encoding(positions) + self.input_embedding(x)
 
 
@@ -177,7 +176,6 @@ class Transformer(torch.nn.Module):
 
 def train(model, optimizer, loss_function, train_data):
     size = len(train_data.dataset)
-    print(f"size: {size}")
     loss = None
     for count, item in enumerate(train_data):
         # print("item: ", item, len(item), type(item))
@@ -202,6 +200,21 @@ def train(model, optimizer, loss_function, train_data):
             print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
     return loss
+
+
+def validate(model, validate_data, loss_function):
+    model.eval()
+    total_loss = 0
+    with torch.no_grad():
+        for i, items in enumerate(validate_data):
+            src = items['de_ids'].to(device)
+            trg = items['en_ids'].to(device)
+            predict = model(src, trg[:, :-1])
+            predict = predict.transpose(-2, -1)
+            loss = loss_function(predict, trg[:, 1:].long())
+            total_loss += loss.item()
+
+    return total_loss / len(validate_data)
 
 
 if __name__=="__main__":
@@ -233,19 +246,23 @@ if __name__=="__main__":
     model = Transformer(num_layers, num_embeddings, embedding_dim,
                         padding_idx, max_token_length, num_heads, dataset.en_vocab_size())
     model.to(device)
+
+    loss_function = torch.nn.CrossEntropyLoss()
     if args.load_trained and os.path.exists(model_file):
-        print(f"load a trained model parameters from {model_file}")
+        print(f"Load a trained model parameters from {model_file}")
         model.load_state_dict(torch.load(model_file))
 
     if args.train:
+        print(f"Train the transformer model with dataset {dataset}.")
         model.train()
         optimizer = torch.optim.Adam(model.parameters())
-        loss_function = torch.nn.CrossEntropyLoss()
 
         # train
         for i in range(num_epochs):
             loss = train(model, optimizer, loss_function, dataset.train_data())
-            print(f"epoch {i}, loss: {loss}")
+            # print(f"epoch {i}, loss: {loss}")
+            validate_loss = validate(model, dataset.valid_data(), loss_function)
+            print(f"validate_loss: {validate_loss}")
 
         torch.save(model.state_dict(), "model.pth")
         print("save the model to model.pth")
