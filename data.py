@@ -42,10 +42,19 @@ class Multi30k(object):
             "en_tokens": [sos_token] + [token.text.lower() for token in en_nlp.tokenizer(data["en"])][:max_token_length] + [eos_token],
             "de_tokens": [sos_token] + [token.text.lower() for token in de_nlp.tokenizer(data["de"])][:max_token_length] + [eos_token]
         }
-
         
+        min_freq = 3
+        unk_token = "<unk>"
+        pad_token = "<pad>"
         sos_token = "<sos>"
         eos_token = "<eos>"
+
+        self._special_tokens = [
+            unk_token,
+            pad_token,
+            sos_token,
+            eos_token,
+        ]
 
         fn_kwargs = {
             "en_nlp": en_nlp,
@@ -59,28 +68,20 @@ class Multi30k(object):
         valid_data = valid_data.map(tokenize, fn_kwargs=fn_kwargs)
         test_data = test_data.map(tokenize, fn_kwargs=fn_kwargs)
 
-        min_freq = 2
-        unk_token = "<unk>"
-        pad_token = "<pad>"
-
-        special_tokens = [
-            unk_token,
-            pad_token,
-            sos_token,
-            eos_token,
-        ]
 
         en_vocab = vocab.build_vocab_from_iterator(
             train_data["en_tokens"],
             min_freq=min_freq,
-            specials=special_tokens,
+            specials=self._special_tokens,
         )
 
         de_vocab = vocab.build_vocab_from_iterator(
             train_data["de_tokens"],
             min_freq=min_freq,
-            specials=special_tokens,
+            specials=self._special_tokens,
         )
+        self._en_vocab = en_vocab
+        self._de_vocab = de_vocab
         self._en_vocab_size = len(en_vocab)
         self._de_vocab_size = len(de_vocab)
 
@@ -93,7 +94,7 @@ class Multi30k(object):
         en_vocab.set_default_index(unk_index)
         de_vocab.set_default_index(unk_index)
 
-        # print("print(en_vocab)", len(en_vocab), en_vocab.lookup_token(len(en_vocab) - 1), en_vocab['zune'])
+        self._special_idx = list(map(lambda token: en_vocab[token], self._special_tokens))
 
         numericalize = lambda data, en_vocab, de_vocab: {
             "en_ids": en_vocab.lookup_indices(data["en_tokens"]),
@@ -139,8 +140,8 @@ class Multi30k(object):
 
 
         self._train_data_loader = get_data_loader(train_data, batch_size, pad_index, shuffle=True)
-        self._valid_data_loader = get_data_loader(valid_data, batch_size, pad_index)
-        self._test_data_loader = get_data_loader(test_data, batch_size, pad_index)
+        self._valid_data_loader = get_data_loader(valid_data, batch_size, pad_index, shuffle=True)
+        self._test_data_loader = get_data_loader(test_data, batch_size, pad_index, shuffle=True)
 
         
     def train_data(self):
@@ -158,16 +159,34 @@ class Multi30k(object):
     def de_vocab_size(self):
         return self._de_vocab_size
 
+    def de_vocab(self):
+        return self._de_vocab
+
+    def en_vocab(self):
+        return self._en_vocab
+
     def pad_index(self):
         return self._pad_index
 
     def max_token_length(self):
         return self._max_token_length
 
+    def special_tokens(self):
+        return self._special_tokens
+
+    def spacial_idx(self):
+        return self._special_idx
+
+    def __str__(self):
+        return "Multi30k"
+
 if __name__=="__main__":
-    dataset = Multi30k(4)
+    batch_size = 4
+    dataset = Multi30k(batch_size)
     print("en_vocab_size: ", dataset.en_vocab_size())
     print("de_vocab_size: ", dataset.de_vocab_size())
     for i, item in enumerate(dataset.train_data()):
-        print("item: ", item, len(item))
-        if i == 3: break
+        # print("item: ", item, len(item))
+        print("item['de_ids']: ", item['de_ids'].T, item['de_ids'].shape)
+        print("item['en_ids']: ", item['en_ids'].T, item['en_ids'].shape)
+        if i == 0: break
