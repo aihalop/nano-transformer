@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import random
 import numpy as np
 import spacy
 import datasets
@@ -9,13 +8,14 @@ import datasets
 from torchtext import vocab
 import os
 
-seed = 1234
 
-random.seed(seed)
-np.random.seed(seed)
-torch.manual_seed(seed)
-torch.cuda.manual_seed(seed)
-torch.backends.cudnn.deterministic = True
+
+en_nlp = spacy.load("en_core_web_sm")
+de_nlp = spacy.load("de_core_news_sm")
+
+
+def de_tokenize(de_sentence):
+    return [token.text.lower() for token in de_nlp.tokenizer(de_sentence)]
 
 
 class Multi30k(object):
@@ -35,19 +35,16 @@ class Multi30k(object):
             dataset["test"],
         )
 
-        en_nlp = spacy.load("en_core_web_sm")
-        de_nlp = spacy.load("de_core_news_sm")
-
         tokenize = lambda data, en_nlp, de_nlp, max_token_length, sos_token, eos_token: {
             "en_tokens": [sos_token] + [token.text.lower() for token in en_nlp.tokenizer(data["en"])][:max_token_length] + [eos_token],
             "de_tokens": [sos_token] + [token.text.lower() for token in de_nlp.tokenizer(data["de"])][:max_token_length] + [eos_token]
         }
         
         min_freq = 3
-        unk_token = "<unk>"
-        pad_token = "<pad>"
-        sos_token = "<sos>"
-        eos_token = "<eos>"
+        self.unk_token = unk_token = "<unk>"
+        self.pad_token = pad_token = "<pad>"
+        self.sos_token = sos_token = "<sos>"
+        self.eos_token = eos_token = "<eos>"
 
         self._special_tokens = [
             unk_token,
@@ -87,6 +84,8 @@ class Multi30k(object):
 
         assert en_vocab[unk_token] == de_vocab[unk_token]
         assert en_vocab[pad_token] == de_vocab[pad_token]
+        assert en_vocab[sos_token] == de_vocab[sos_token]
+        assert en_vocab[eos_token] == de_vocab[eos_token]
 
         unk_index = en_vocab[unk_token]
         pad_index = en_vocab[pad_token]
@@ -120,11 +119,15 @@ class Multi30k(object):
 
         def get_data_loader(dataset, batch_size, pad_index, shuffle=False):
             def collate_fn(batch):
+                batch_en = [example["en"] for example in batch]
+                batch_de = [example["de"] for example in batch]
                 batch_en_ids = [example["en_ids"] for example in batch]
                 batch_de_ids = [example["de_ids"] for example in batch]
                 batch_en_ids = nn.utils.rnn.pad_sequence(batch_en_ids, padding_value=pad_index)
                 batch_de_ids = nn.utils.rnn.pad_sequence(batch_de_ids, padding_value=pad_index)
                 batch = {
+                    "en": batch_en,
+                    "de": batch_de,
                     "en_ids": batch_en_ids.T,
                     "de_ids": batch_de_ids.T,
                 }
@@ -176,6 +179,12 @@ class Multi30k(object):
 
     def spacial_idx(self):
         return self._special_idx
+    
+    def sos_idx(self):
+        return self._de_vocab[self.sos_token]
+
+    def eos_idx(self):
+        return self._de_vocab[self.eos_token]
 
     def __str__(self):
         return "Multi30k"
