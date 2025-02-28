@@ -1,5 +1,4 @@
 from data import Multi30k, de_tokenize
-# from model import Transformer
 import torch
 import torch.nn.functional as F
 import math
@@ -205,8 +204,6 @@ def train(model, optimizer, loss_function, train_data):
     size = len(train_data.dataset)
     loss = None
     for count, item in enumerate(train_data):
-
-        # print("item: ", item, len(item), type(item))
         src = item['de_ids'].to(device)
         trg = item['en_ids'].to(device)
 
@@ -215,23 +212,15 @@ def train(model, optimizer, loss_function, train_data):
         # last token, but the tokens at every positions as well, then
         # why should we shift right the output?
         shifted_right_trg = trg[:, :-1]
-        ground_truth = trg[:, 1:].contiguous().view(-1)
-        # print("shifted_right_trg", shifted_right_trg.shape, trg[:, :-1].contiguous().view(-1).shape)
+        ground_truth = trg[:, 1:].contiguous()
         optimizer.zero_grad()
         predict = model(src, shifted_right_trg)
-        predict = predict.view(-1, predict.shape[-1])
-        # print("output >> ", predict.shape)
-        # print("ground_truth >>", ground_truth.shape)
-        # predict = predict.transpose(-2, -1)
-        # print("predict.shape", predict.shape)
-        # print("trg: ", trg[:,1:], trg[:,1:].shape)
-        # loss = loss_function(predict, trg[:,1:].long())
+        predict = predict.transpose(-2, -1).contiguous() # transpose for the input of CrossEntropyLoss.
+
         loss = loss_function(predict, ground_truth)
-        # loss = F.cross_entropy(predict, ground_truth, reduction='sum')
 
         loss.backward()
         optimizer.step()
-
 
         if count % 10 == 0:
             loss, current = loss.item(), (count + 1) * len(src)
@@ -287,7 +276,6 @@ if __name__=="__main__":
     parser.add_argument('--load_trained', action='store_true', default=False)
     parser.add_argument('--predict', action='store_true', default=False)
     parser.add_argument('--train', action='store_true', default=False)
-    parser.add_argument('--test', action='store_true', default=False)
     parser.add_argument('--batch', type=int, default=50)
     args = parser.parse_args()
 
@@ -307,17 +295,14 @@ if __name__=="__main__":
                         padding_idx, max_token_length, num_heads, dataset.en_vocab_size())
     model.to(device)
 
-    loss_function = torch.nn.CrossEntropyLoss(ignore_index=padding_idx, reduction='sum')
     if args.load_trained and os.path.exists(model_file):
         print(f"\nLoad a trained model parameters from {model_file}\n")
         model.load_state_dict(torch.load(model_file))
 
     if args.train:
         print(f"\nTrain the transformer model with dataset {dataset}.\n")
-
+        loss_function = torch.nn.CrossEntropyLoss(ignore_index=padding_idx, reduction='sum')
         optimizer = torch.optim.Adam(model.parameters())
-
-        # train
         for i in range(num_epochs):
             loss = train(model, optimizer, loss_function, dataset.train_data())
             validate_loss = validate(model, dataset.valid_data(), loss_function)
@@ -336,11 +321,6 @@ if __name__=="__main__":
     sos_idx = dataset.sos_idx()
     eos_idx = dataset.eos_idx()
 
-    to_sentence = lambda indices, vocab: ' '.join([
-        vocab.lookup_token(index) for index in indices if not index in special_idx
-    ])
-
-    # test translation
     for batch in dataset.test_data():
         for de_sentence in batch["de"]:
             print("German sentence: ", de_sentence)
