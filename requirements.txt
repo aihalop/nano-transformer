@@ -1,0 +1,4 @@
+torch==2.3.0
+torchtext==0.18.0
+spacy==3.8.4
+datasets==3.2.0
