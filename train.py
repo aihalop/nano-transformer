@@ -1,5 +1,6 @@
 # Copyright (c) 2025 Jin Cao
-#
+# SPDX-License-Identifier: MIT
+
 # Train the Transformer as a seq2seq machine translator.
 #
 # Author: Jin Cao <aihalop@gmail.com>

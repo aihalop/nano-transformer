@@ -1,4 +1,5 @@
 # Copyright (c) 2025 Jin Cao
+# SPDX-License-Identifier: MIT
 #
 # The Transformer Model.
 #
