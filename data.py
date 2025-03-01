@@ -1,3 +1,7 @@
+# A class to access Multi30k dataset, based on data preparing code
+# from https://github.com/bentrevett/pytorch-seq2seq/
+
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
