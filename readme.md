@@ -11,6 +11,7 @@ implementation of the Transformer with updated pytorch libraries.
 High performance GPU is not necessary. You could play this transformer
 using a CUDA-Enabled Nvidia GPU with only 2G memory.
 
+Issues and pull requests are welcome!
 
 ## Prerequisites
 
