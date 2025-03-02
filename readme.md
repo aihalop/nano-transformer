@@ -43,7 +43,7 @@ python3 train.py
 It translates all German sentences in the test set of Multi30K to English.
 
 ```bash
-python3 test.py
+python3 translate.py
 ```
 
 # References
