@@ -21,10 +21,12 @@ device = (
 
 
 class Embedding(torch.nn.Module):
-    def __init__(self, num_embeddings, embedding_dim, padding_idx, max_token_length):
+    def __init__(self, num_embeddings, embedding_dim,
+                 padding_idx, max_token_length):
         super().__init__()
         self.input_embedding = \
-            torch.nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
+            torch.nn.Embedding(num_embeddings, embedding_dim,
+                               padding_idx=padding_idx)
         self.position_encoding = \
             torch.nn.Embedding(max_token_length, embedding_dim)
 
@@ -126,10 +128,15 @@ class EncoderBlock(torch.nn.Module):
         self._embedding_dim = embedding_dim
         self.self_attention = SelfAttention(embedding_dim, dk, dv, num_heads)
         self.feed_forward = FeedForward(embedding_dim)
+        self.dropout = torch.nn.Dropout(p=0.1)
 
     def forward(self, x, padding_mask=None):
-        attention = F.layer_norm(x + self.self_attention(x, padding_mask), x.shape)
-        output = F.layer_norm(attention + self.feed_forward(attention), attention.shape)
+        attention = F.layer_norm(
+            x + self.dropout(self.self_attention(x, padding_mask)),
+            x.shape[0]
+        )
+        output = F.layer_norm(
+            attention + self.feed_forward(attention), attention.shape)
         return output
 
 
@@ -153,8 +160,10 @@ class DecoderBlock(torch.nn.Module):
     def __init__(self, num_embeddings, embedding_dim, dk, dv, num_heads):
         super().__init__()
         self.self_attention = SelfAttention(embedding_dim, dk, dv, num_heads)
-        self.encoder_decoder_attention = EncoderDecoderAttention(embedding_dim, dk, dv, num_heads)
+        self.encoder_decoder_attention = \
+            EncoderDecoderAttention(embedding_dim, dk, dv, num_heads)
         self.feed_forward = FeedForward(embedding_dim)
+        self.dropout = torch.nn.Dropout(p=0.1)
 
     def forward(self, y, x):
         # mask:
@@ -164,7 +173,8 @@ class DecoderBlock(torch.nn.Module):
         mask = (torch.tril(torch.ones(y.shape[-2], y.shape[-2])) == 0).to(device)
         self_attention = F.layer_norm(y + self.self_attention(y, mask), y.shape)
         encode_decode_attention = F.layer_norm(
-            self_attention + self.encoder_decoder_attention(self_attention, x),
+            self_attention + self.dropout(
+                self.encoder_decoder_attention(self_attention, x)),
             self_attention.shape
         )
         output = F.layer_norm(
@@ -176,10 +186,12 @@ class DecoderBlock(torch.nn.Module):
 
 
 class Decoder(torch.nn.Module):
-    def __init__(self, num_layers, num_embeddings, embedding_dim, dk, dv, num_heads):
+    def __init__(self, num_layers, num_embeddings,
+                 embedding_dim, dk, dv, num_heads):
         super().__init__()
         self.blocks = torch.nn.ModuleList(
-            [DecoderBlock(num_embeddings, embedding_dim, dk, dv, num_heads) for i in range(num_layers)]
+            [DecoderBlock(num_embeddings, embedding_dim, dk, dv, num_heads)
+             for i in range(num_layers)]
         )
 
     def forward(self, y, x):
@@ -205,10 +217,11 @@ class Transformer(torch.nn.Module):
         self.output_embedding = Embedding(
             num_output_embeddings, embedding_dim, padding_idx, max_token_length)
 
-        self.encoder = Encoder(num_layers, num_input_embeddings, embedding_dim, dk, dv,
-                               padding_idx, max_token_length, num_heads)
+        self.encoder = Encoder(num_layers, num_input_embeddings, embedding_dim,
+                               dk, dv, padding_idx, max_token_length, num_heads)
 
-        self.decoder = Decoder(num_layers, num_output_embeddings, embedding_dim, dk, dv, num_heads)
+        self.decoder = Decoder(num_layers, num_output_embeddings,
+                               embedding_dim, dk, dv, num_heads)
         self.linear = torch.nn.Linear(embedding_dim, en_vocab_size)
 
         for p in self.parameters():

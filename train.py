@@ -1,6 +1,6 @@
 # Copyright (c) 2025 Jin Cao
 # SPDX-License-Identifier: MIT
-
+#
 # Train the Transformer as a seq2seq machine translator.
 #
 # Author: Jin Cao <aihalop@gmail.com>
@@ -14,6 +14,7 @@ import random
 from data import Multi30k, de_tokenize
 from model import Transformer
 
+import config
 
 # Repeatability
 seed = 0
@@ -86,24 +87,20 @@ if __name__=="__main__":
     parser.add_argument('--batch', type=int, default=50)
     args = parser.parse_args()
 
-    model_file = "model.pth"
     num_epochs = args.epoch
     batch_size = args.batch
     dataset = Multi30k(batch_size)
     num_de_embeddings = dataset.de_vocab_size()
     num_en_embeddings = dataset.en_vocab_size()
-    embedding_dim = 64
-    num_heads = 8
-    num_layers = 6
     padding_idx = dataset.pad_index()
-    max_token_length = 200
 
-    model = Transformer(num_layers, num_de_embeddings, num_en_embeddings, embedding_dim,
-                        padding_idx, max_token_length, num_heads, dataset.en_vocab_size())
+    model = Transformer(config.num_layers, num_de_embeddings, num_en_embeddings,
+                        config.embedding_dim, padding_idx, config.max_token_length,
+                        config.num_heads, dataset.en_vocab_size())
     model.to(device)
 
-    if args.load_trained and os.path.exists(model_file):
-        print(f"\nLoad a trained model parameters from {model_file}\n")
+    if args.load_trained and os.path.exists(config.model_file):
+        print(f"\nLoad a trained model parameters from {config.model_file}\n")
         model.load_state_dict(torch.load(model_file))
 
 

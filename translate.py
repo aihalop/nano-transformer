@@ -14,6 +14,7 @@ import os
 from data import Multi30k, de_tokenize
 from model import Transformer
 
+import config
 
 device = (
     "cuda" if torch.cuda.is_available() else
@@ -43,24 +44,20 @@ def translate(model, de_sentence, de_vocab, en_vocab,
 
 
 if __name__=="__main__":
-    model_file = "model.pth"
     batch_size = 1
     dataset = Multi30k(batch_size)
     num_de_embeddings = dataset.de_vocab_size()
     num_en_embeddings = dataset.en_vocab_size()
-    embedding_dim = 64
-    num_heads = 8
-    num_layers = 6
     padding_idx = dataset.pad_index()
-    max_token_length = 200
 
-    model = Transformer(num_layers, num_de_embeddings, num_en_embeddings, embedding_dim,
-                        padding_idx, max_token_length, num_heads, dataset.en_vocab_size())
+    model = Transformer(config.num_layers, num_de_embeddings, num_en_embeddings,
+                        config.embedding_dim, padding_idx, config.max_token_length,
+                        config.num_heads, dataset.en_vocab_size())
     model.to(device)
 
-    if os.path.exists(model_file):
-        print(f"\nLoad a trained model parameters from {model_file}\n")
-        model.load_state_dict(torch.load(model_file))
+    if os.path.exists(config.model_file):
+        print(f"\nLoad a trained model parameters from {config.model_file}\n")
+        model.load_state_dict(torch.load(config.model_file))
 
     print("\nTranslate sentences from German to English.\n")
     model.eval()
@@ -76,6 +73,6 @@ if __name__=="__main__":
             print("German sentence: ", de_sentence)
             print("English sentence: ", en_sentence)
             en_sentence = translate(model, de_sentence, de_vocab, en_vocab,
-                      sos_idx, eos_idx, max_token_length)
+                      sos_idx, eos_idx, config.max_token_length)
             print("Translation: ", en_sentence)
             print("---")
