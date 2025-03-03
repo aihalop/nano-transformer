@@ -33,23 +33,6 @@ class Embedding(torch.nn.Module):
         return self.position_encoding(positions) + self.input_embedding(x)
 
 
-class Attention(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, Q, K, V, mask=None):
-        dk = K.size(-2)
-        # TODO(Jin Cao): mulit-head attention
-
-        if mask is None:
-            mask = (torch.zeros(Q.shape[-2], K.shape[-2]) == 1).to(device)
-
-        return F.softmax(
-            (Q @ K.transpose(-2, -1)).masked_fill(mask, -1e10) \
-            / math.sqrt(dk), dim=-1
-        ) @ V
-
-
 class FeedForward(torch.nn.Module):
     def __init__(self, embedding_dim):
         super().__init__()
@@ -63,13 +46,55 @@ class FeedForward(torch.nn.Module):
         return self.f(x)
 
 
-class SelfAttention(torch.nn.Module):
-    def __init__(self, embedding_dim):
+def ScaledDotProductAttention(Q, K, V, mask):
+    dk = Q.size(-1)
+    mask = mask.unsqueeze(-3)
+    return F.softmax(
+        (Q @ K.transpose(-2, -1)).masked_fill(mask, -1e10) \
+        / math.sqrt(dk), dim=-1
+    ) @ V
+
+
+def Concat(attentions, batch, len_query):
+    return attentions.transpose(1, 2).contiguous().view(batch, len_query, -1)
+
+
+class MultiHeadAttention(torch.nn.Module):
+    def __init__(self, dk, dv, num_heads):
         super().__init__()
-        self.projector_q = torch.nn.Linear(embedding_dim, embedding_dim)
-        self.projector_k = torch.nn.Linear(embedding_dim, embedding_dim)
-        self.projector_v = torch.nn.Linear(embedding_dim, embedding_dim)
-        self.attention = Attention()
+        self._dk = dk
+        self._dv = dv
+        self._num_heads = num_heads
+
+    def forward(self, Q, K, V, mask=None):
+        batch = Q.size(0)
+        len_query = Q.size(1)
+        len_key = K.size(1)
+        len_value = V.size(1)
+
+        # Seperate projected Q, K, V into h heads.
+        # shape of Q, K: (batch, head, token, dv)
+        # shape of V:    (batch, head, token, dk)
+        Q = Q.view(batch, len_query, self._num_heads, self._dk).transpose(1, 2)
+        K = K.view(batch, len_key,   self._num_heads, self._dk).transpose(1, 2)
+        V = V.view(batch, len_value, self._num_heads, self._dv).transpose(1, 2)
+
+        if mask is None:
+            mask = (torch.zeros(Q.shape[-2], K.shape[-2]) == 1).to(device)
+
+        return Concat(
+            ScaledDotProductAttention(Q, K, V, mask),
+            batch, len_query
+        )
+
+
+class SelfAttention(torch.nn.Module):
+    def __init__(self, embedding_dim, dk, dv, num_heads):
+        super().__init__()
+        self.projector_q = torch.nn.Linear(embedding_dim, dk * num_heads)
+        self.projector_k = torch.nn.Linear(embedding_dim, dk * num_heads)
+        self.projector_v = torch.nn.Linear(embedding_dim, dv * num_heads)
+        self.attention = MultiHeadAttention(dk, dv, num_heads)
 
     def forward(self, x, mask=None):
         return self.attention(
@@ -77,14 +102,13 @@ class SelfAttention(torch.nn.Module):
             mask
         )
 
-
 class EncoderDecoderAttention(torch.nn.Module):
-    def __init__(self, embedding_dim):
+    def __init__(self, embedding_dim, dk, dv, num_heads):
         super().__init__()
-        self.projector_q = torch.nn.Linear(embedding_dim, embedding_dim)
-        self.projector_k = torch.nn.Linear(embedding_dim, embedding_dim)
-        self.projector_v = torch.nn.Linear(embedding_dim, embedding_dim)
-        self.attenion = Attention()
+        self.projector_q = torch.nn.Linear(embedding_dim, dk * num_heads)
+        self.projector_k = torch.nn.Linear(embedding_dim, dk * num_heads)
+        self.projector_v = torch.nn.Linear(embedding_dim, dv * num_heads)
+        self.attenion = MultiHeadAttention(dk, dv, num_heads)
 
     def forward(self, y, x):
         return self.attenion(
@@ -95,12 +119,12 @@ class EncoderDecoderAttention(torch.nn.Module):
 
 
 class EncoderBlock(torch.nn.Module):
-    def __init__(self, num_embeddings, embedding_dim, padding_idx,
+    def __init__(self, num_embeddings, embedding_dim, dk, dv, padding_idx,
                  max_token_length, num_heads):
         super().__init__()
         self._padding_idx = padding_idx
         self._embedding_dim = embedding_dim
-        self.self_attention = SelfAttention(embedding_dim)
+        self.self_attention = SelfAttention(embedding_dim, dk, dv, num_heads)
         self.feed_forward = FeedForward(embedding_dim)
 
     def forward(self, x, padding_mask=None):
@@ -110,11 +134,11 @@ class EncoderBlock(torch.nn.Module):
 
 
 class Encoder(torch.nn.Module):
-    def __init__(self, num_layers, num_embeddings, embedding_dim,
+    def __init__(self, num_layers, num_embeddings, embedding_dim, dk, dv,
                  padding_idx, max_token_length, num_heads):
         super().__init__()
         self.blocks = torch.nn.ModuleList(
-            [EncoderBlock(num_embeddings, embedding_dim, padding_idx,
+            [EncoderBlock(num_embeddings, embedding_dim, dk, dv, padding_idx,
                           max_token_length, num_heads)
              for i in range(num_layers)]
         )
@@ -126,10 +150,10 @@ class Encoder(torch.nn.Module):
 
 
 class DecoderBlock(torch.nn.Module):
-    def __init__(self, num_embeddings, embedding_dim):
+    def __init__(self, num_embeddings, embedding_dim, dk, dv, num_heads):
         super().__init__()
-        self.self_attention = SelfAttention(embedding_dim)
-        self.encoder_decoder_attention = EncoderDecoderAttention(embedding_dim)
+        self.self_attention = SelfAttention(embedding_dim, dk, dv, num_heads)
+        self.encoder_decoder_attention = EncoderDecoderAttention(embedding_dim, dk, dv, num_heads)
         self.feed_forward = FeedForward(embedding_dim)
 
     def forward(self, y, x):
@@ -152,10 +176,10 @@ class DecoderBlock(torch.nn.Module):
 
 
 class Decoder(torch.nn.Module):
-    def __init__(self, num_layers, num_embeddings, embedding_dim):
+    def __init__(self, num_layers, num_embeddings, embedding_dim, dk, dv, num_heads):
         super().__init__()
         self.blocks = torch.nn.ModuleList(
-            [DecoderBlock(num_embeddings, embedding_dim) for i in range(num_layers)]
+            [DecoderBlock(num_embeddings, embedding_dim, dk, dv, num_heads) for i in range(num_layers)]
         )
 
     def forward(self, y, x):
@@ -172,6 +196,8 @@ class Transformer(torch.nn.Module):
         self._padding_idx = padding_idx
         self._embedding_dim = embedding_dim
         self._num_heads = num_heads
+        dk = int(embedding_dim / num_heads)
+        dv = int(embedding_dim / num_heads)
         # Since the input and output vocabularies are different, we
         # have to use two embeddings respectively.
         self.input_embedding = Embedding(
@@ -179,10 +205,10 @@ class Transformer(torch.nn.Module):
         self.output_embedding = Embedding(
             num_output_embeddings, embedding_dim, padding_idx, max_token_length)
 
-        self.encoder = Encoder(num_layers, num_input_embeddings, embedding_dim,
+        self.encoder = Encoder(num_layers, num_input_embeddings, embedding_dim, dk, dv,
                                padding_idx, max_token_length, num_heads)
 
-        self.decoder = Decoder(num_layers, num_output_embeddings, embedding_dim)
+        self.decoder = Decoder(num_layers, num_output_embeddings, embedding_dim, dk, dv, num_heads)
         self.linear = torch.nn.Linear(embedding_dim, en_vocab_size)
 
         for p in self.parameters():
