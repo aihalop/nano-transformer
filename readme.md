@@ -33,7 +33,8 @@ pip install https://github.com/explosion/spacy-models/releases/download/de_core_
 ## Usage
 ### Train
 
-It loads Multi30K dataset, and train the transformer as a German-English translator.
+It loads Multi30K dataset, and train the transformer as a
+German-English translator and saves the trained model to "model.pth"
 
 ```bash
 python3 train.py
@@ -41,7 +42,9 @@ python3 train.py
 
 ### Test
 
-It translates all German sentences in the test set of Multi30K to English.
+It translates all German sentences in the test set of Multi30K into
+English using the model loaded from "model.pth" if it exists;
+otherwise, an untrained model will be used.
 
 ```bash
 python3 translate.py
