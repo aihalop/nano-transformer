@@ -133,7 +133,7 @@ class EncoderBlock(torch.nn.Module):
     def forward(self, x, padding_mask=None):
         attention = F.layer_norm(
             x + self.dropout(self.self_attention(x, padding_mask)),
-            x.shape[0]
+            x.shape
         )
         output = F.layer_norm(
             attention + self.feed_forward(attention), attention.shape)
