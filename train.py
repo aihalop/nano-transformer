@@ -105,7 +105,7 @@ if __name__=="__main__":
 
 
     print(f"\nTrain the transformer model with dataset {dataset}.\n")
-    loss_function = torch.nn.CrossEntropyLoss(ignore_index=padding_idx, reduction='sum')
+    loss_function = torch.nn.CrossEntropyLoss(ignore_index=padding_idx)
     optimizer = torch.optim.Adam(model.parameters())
     print(f"{num_epochs} epochs to train")
     for i in range(num_epochs):
@@ -113,5 +113,6 @@ if __name__=="__main__":
         validate_loss = validate(model, dataset.valid_data(), loss_function)
         print(f"epoch {i}, validate_loss: {validate_loss}")
 
-    torch.save(model.state_dict(), "model.pth")
+        torch.save(model.state_dict(), "model.pth")
+
     print("save the model to model.pth")
