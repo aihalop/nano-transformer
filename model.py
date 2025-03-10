@@ -27,6 +27,14 @@ class Embedding(torch.nn.Module):
         self.input_embedding = \
             torch.nn.Embedding(num_embeddings, embedding_dim,
                                padding_idx=padding_idx)
+
+        # As mentioned in the paper,
+        #
+        # "...We also experimented with using learned positional
+        # embeddings instead, and found that the two versions produced
+        # nearly identical results...",
+        #
+        # we use learned positional embeddings here.
         self.position_encoding = \
             torch.nn.Embedding(max_token_length, embedding_dim)
 
@@ -237,5 +245,3 @@ class Transformer(torch.nn.Module):
         encode = self.encoder(x, padding_mask)
         output = self.decoder(y, encode)
         return self.linear(output)
-
-
