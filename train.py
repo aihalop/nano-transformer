@@ -101,7 +101,7 @@ if __name__=="__main__":
 
     if args.load_trained and os.path.exists(config.model_file):
         print(f"\nLoad a trained model parameters from {config.model_file}\n")
-        model.load_state_dict(torch.load(model_file))
+        model.load_state_dict(torch.load(config.model_file))
 
 
     print(f"\nTrain the transformer model with dataset {dataset}.\n")
